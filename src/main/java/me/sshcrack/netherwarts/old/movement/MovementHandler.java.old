@@ -1,0 +1,125 @@
+package me.sshcrack.netherwarts.old.movement;
+
+import me.sshcrack.netherwarts.MessageManager;
+import me.sshcrack.netherwarts.manager.inv.baic.InventoryManager;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.network.ClientPlayerInteractionManager;
+import net.minecraft.client.option.GameOptions;
+import net.minecraft.util.Formatting;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.Vec3d;
+
+import java.util.LinkedList;
+import java.util.Queue;
+
+public class MovementHandler extends Thread {
+
+    private final Queue<BlockPos> toFarm = new LinkedList<>();
+    private final GameOptions options;
+    private final InventoryManager inv;
+    private final ClientPlayerInteractionManager interaction;
+
+    private final ClientPlayerEntity player;
+    public MovementHandler(ClientPlayerEntity player) {
+        this.player = player;
+        this.inv = new InventoryManager(player);
+
+        this.options = MinecraftClient.getInstance().options;
+        this.interaction = MinecraftClient.getInstance().interactionManager;
+    }
+
+    public void add(BlockPos wart) {
+        //IMPORTANT Dunno if contains works on blockPos, lets see
+        if(toFarm.contains(wart))
+            return;
+
+        toFarm.add(wart);
+    }
+
+    @Override
+    public void interrupt() {
+        super.interrupt();
+        toFarm.clear();
+
+        options.forwardKey.setPressed(false);
+        options.attackKey.setPressed(false);
+    }
+
+    private void lookAtYawOnly(Vec3d target) {
+        Vec3d pos = player.getPos();
+        double d = target.x - pos.x;
+        double f = target.z - pos.z;
+
+        player.setYaw(MathHelper.wrapDegrees((float)(MathHelper.atan2(f, d) * 57.2957763671875D) - 90.0F));
+        player.setHeadYaw(player.getYaw());
+        player.prevYaw = player.getYaw();
+    }
+
+
+    public void run() {
+        while(!this.isInterrupted()) {
+            if(toFarm.isEmpty())
+                continue;
+
+            BlockPos wart = toFarm.poll();
+            if(wart == null)
+                continue;
+
+            Vec3d wartD = Vec3d.ofCenter(wart, 0);
+
+            MessageManager.sendMsgF(Formatting.GREEN + "Farming wart at %s", wart);
+            while(!Thread.interrupted()) {
+                lookAtYawOnly(wartD);
+                options.forwardKey.setPressed(true);
+
+                BlockPos belowPlayer = player.getBlockPos().up();
+                if(belowPlayer.compareTo(wart) == 0)
+                    break;
+
+            }
+            options.forwardKey.setPressed(false);
+            player.setPitch(90);
+
+            // -------------------------------
+
+            boolean hasHoe = inv.scrollToHoe();
+            if(!hasHoe)
+                MessageManager.sendMsg(Formatting.YELLOW + "Could not find any matching hoe.");
+            options.attackKey.setPressed(true);
+            while(!Thread.interrupted()) {
+                if(player.getWorld().isAir(wart))
+                    break;
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    options.attackKey.setPressed(false);
+                    break;
+                }
+            }
+            options.attackKey.setPressed(false);
+
+            // -------------------------------
+
+            boolean hasWart = inv.scrollToWart();
+            if(!hasWart)
+                MessageManager.sendMsg(Formatting.YELLOW + "Could not find any warts. Not replanting.");
+
+
+            options.useKey.setPressed(true);
+            while(!Thread.interrupted()) {
+                if(!player.getWorld().isAir(wart))
+                    break;
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    options.useKey.setPressed(false);
+                    break;
+                }
+            }
+            options.useKey.setPressed(true);
+        }
+
+    }
+}

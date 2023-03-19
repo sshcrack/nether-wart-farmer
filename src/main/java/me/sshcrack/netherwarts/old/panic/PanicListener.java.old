@@ -1,0 +1,33 @@
+package me.sshcrack.netherwarts.old.panic;
+
+import me.sshcrack.netherwarts.MessageManager;
+import me.sshcrack.netherwarts.manager.WartManager;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.network.ClientPlayNetworkHandler;
+import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.util.Formatting;
+
+public class PanicListener extends Thread {
+    private final ClientPlayerEntity player;
+    private final ClientPlayNetworkHandler handler;
+    private final WartManager manager;
+
+    public PanicListener(ClientPlayerEntity player, WartManager manager) {
+        this.player = player;
+        this.handler = MinecraftClient.getInstance().getNetworkHandler();
+        assert this.handler != null;
+
+        this.manager = manager;
+    }
+
+    public void run() {
+        while(player.getHealth() > 5) {
+            /*Just checking if health is below 5HP*/
+        }
+
+        MessageManager.sendMsg(Formatting.DARK_RED + "Detected Health under 5HP. Teleporting you home...");
+        handler.sendChatCommand("/home");
+
+        manager.stop();
+    }
+}

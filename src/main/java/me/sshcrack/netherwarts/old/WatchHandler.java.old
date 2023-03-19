@@ -1,0 +1,82 @@
+package me.sshcrack.netherwarts.old;
+
+import me.sshcrack.netherwarts.MainMod;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.NetherWartBlock;
+import net.minecraft.client.world.ClientWorld;
+import net.minecraft.util.Pair;
+import net.minecraft.util.math.BlockPos;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.function.Consumer;
+
+public class WatchHandler extends TimerTask {
+    private static final int MAX_WART_AGE = 3;
+
+    private final ClientWorld world;
+    private final Pair<BlockPos, BlockPos> rect;
+    private final Consumer<BlockPos> onWartGrown;
+
+    private Timer timer = new Timer();
+    private final List<Long> alreadyRegistered = new ArrayList<>();
+
+    public WatchHandler(ClientWorld world, Pair<BlockPos, BlockPos> rect, Consumer<BlockPos> onWartGrown) {
+        this.world = world;
+        this.rect = rect;
+        this.onWartGrown = onWartGrown;
+    }
+
+    public void stop() {
+        if(timer == null)
+            return;
+
+        timer.cancel();
+    }
+
+    public void schedule() {
+        this.stop();
+        timer = new Timer();
+
+        timer.scheduleAtFixedRate(this, 0, 1000);
+    }
+
+    @Override
+    public void run() {
+        BlockPos start = rect.getLeft().up();
+        BlockPos end = rect.getRight().up();
+
+        int diffX = end.getX() - start.getX();
+        int diffZ = end.getZ() - start.getZ();
+
+        for(int x = 0; x < diffX; x++) {
+            for(int z = 0; z < diffZ; z++) {
+                BlockPos pos = start.add(x, 0, z);
+                BlockState state = world.getBlockState(pos);
+
+                if(!(state.getBlock() instanceof NetherWartBlock)) {
+                    MainMod.LOGGER.warn("Invalid State Block");
+                    this.cancel();
+                    break;
+                }
+
+                int age = state.get(NetherWartBlock.AGE);
+                boolean contains = alreadyRegistered.contains(pos.asLong());
+
+                if(age != MAX_WART_AGE) {
+                    if(contains)
+                        alreadyRegistered.remove(pos.asLong());
+                    continue;
+                }
+
+                if(!contains) {
+                    MainMod.LOGGER.info("Grown Wart found at {}", pos);
+                    alreadyRegistered.add(pos.asLong());
+                    onWartGrown.accept(pos);
+                }
+            }
+        }
+    }
+}

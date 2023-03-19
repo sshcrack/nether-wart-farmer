@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "me.sshcrack.netherwarts.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [],
+  "client": [
+    "GeneralTimerMixin",
+    "InputUtilMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
