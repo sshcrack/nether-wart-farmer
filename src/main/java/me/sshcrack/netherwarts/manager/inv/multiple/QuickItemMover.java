@@ -175,8 +175,11 @@ public class QuickItemMover extends InventoryManager {
         }
 
         if(state == State.CLICKING_SAMPLE) {
+            sampleSlots = getMatchingSlots(kind, fromPlayerToChest, blockInv);
+            initialSlot = sampleSlots.get(0);
+
             currTick++;
-            if(currTick % 5 == 0) {
+            if(currTick % 10 == 0) {
                 Vec2f pos = getCoordinatesAt(screen, initialSlot);
                 screen.mouseClicked(pos.x, pos.y, 0);
                 screen.mouseReleased(pos.x, pos.y, 0);
@@ -186,7 +189,7 @@ public class QuickItemMover extends InventoryManager {
             }
         } else if(state == State.SHIFTING_ITEMS) {
             currTick++;
-            if(currTick % 5 == 0) {
+            if(currTick % 10 == 0) {
                 Vec2f pos = getCoordinatesAt(screen, secondary);
 
                 KeyOverwrite.press(SHIFT_KEY);
