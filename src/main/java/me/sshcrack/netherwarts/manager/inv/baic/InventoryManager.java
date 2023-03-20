@@ -1,10 +1,13 @@
 package me.sshcrack.netherwarts.manager.inv.baic;
 
 import me.sshcrack.netherwarts.MainMod;
+import me.sshcrack.netherwarts.manager.GeneralHandler;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.inventory.Inventory;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.screen.slot.Slot;
@@ -13,16 +16,14 @@ import net.minecraft.util.math.Vec2f;
 
 import java.util.function.Supplier;
 
-public class InventoryManager {
-    protected final ClientPlayerEntity player;
-
+public class InventoryManager extends GeneralHandler {
     private int currTick = 1;
 
     protected InventoryScreen screen;
     protected InvState state = InvState.Opening;
 
     public InventoryManager(ClientPlayerEntity player) {
-        this.player = player;
+        super(player);
     }
 
 
@@ -81,8 +82,9 @@ public class InventoryManager {
             currTick++;
 
             if(currTick % 20 == 0) {
-
                 screen.close();
+                player.currentScreenHandler.close(player);
+                MinecraftClient.getInstance().setScreen(null);
                 state = InvState.Opening;
                 return true;
             }
@@ -92,5 +94,27 @@ public class InventoryManager {
 
         MainMod.LOGGER.error("Invalid State {}", state);
         return false;
+    }
+
+    public static int getSlotsFree(Inventory inv) {
+        int free = 0;
+        for (int i = 0; i < inv.size(); i++) {
+            ItemStack item = inv.getStack(i);
+            if(item.isEmpty())
+                free++;
+        }
+
+        return free;
+    }
+
+    public static int getSlotsWithItem(Inventory inv, Item kind) {
+        int withItem = 0;
+        for (int i = 0; i < inv.size(); i++) {
+            ItemStack item = inv.getStack(i);
+            if(item.isOf(kind))
+                withItem++;
+        }
+
+        return withItem;
     }
 }

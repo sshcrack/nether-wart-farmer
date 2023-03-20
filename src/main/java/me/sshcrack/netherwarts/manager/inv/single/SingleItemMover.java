@@ -24,6 +24,10 @@ public class SingleItemMover extends InventoryManager {
         super(player);
     }
 
+    public void reset() {
+        singleState = SingleInvState.MOVING_SOURCE;
+    }
+
     public boolean scrollToHoe(int hotbarSlot) {
         return moveItemsWrapper(Items.DIAMOND_HOE, hotbarSlot);
     }
@@ -33,19 +37,24 @@ public class SingleItemMover extends InventoryManager {
         return moveItemsWrapper(Items.NETHER_WART, hotbarSlot);
     }
 
+    //Returns if done
+    public boolean moveBreadTick(int hotbarSlot) {
+        return moveItemsWrapper(Items.BREAD, hotbarSlot);
+    }
+
     private boolean moveItemsWrapper(Item kind, int hotbarSlot) {
-        singleState = SingleInvState.MOVING_SOURCE;
+        ItemStack initialStack = player.getInventory().main.get(hotbarSlot);
+        if(state == InvState.Opening && initialStack.isOf(kind)) {
+            player.getInventory().selectedSlot = hotbarSlot;
+            return true;
+        }
+
         return basicInvOpener(() -> moveItems(kind, hotbarSlot));
     }
 
     private boolean moveItems(Item kind, int hotbarSlot) {
         int destinationSlot = 36 + hotbarSlot;
         ScreenHandler handler = player.currentScreenHandler;
-
-        ItemStack initialStack = player.getInventory().main.get(hotbarSlot);
-        if(initialStack.isOf(kind))
-            return true;
-
 
         if(singleState == SingleInvState.MOVING_SOURCE) {
             PlayerInventory inv = player.getInventory();
@@ -79,10 +88,8 @@ public class SingleItemMover extends InventoryManager {
             screen.mouseClicked(start.x, start.y, 0);
             screen.mouseReleased(start.x, start.y, 0);
             singleState = SingleInvState.MOVING_DEST;
-        }
-
-
-        if(singleState == SingleInvState.MOVING_DEST) {
+            MessageManager.sendMsgF("Moving dest");
+        } else if(singleState == SingleInvState.MOVING_DEST) {
             Slot dest = handler.getSlot(destinationSlot);
             Vec2f end = getCoordinatesAt(screen, dest);
 
@@ -90,6 +97,8 @@ public class SingleItemMover extends InventoryManager {
             screen.mouseReleased(end.x, end.y, 0);
             state = InvState.Closing;
 
+            MessageManager.sendMsgF("Selecting slot %s", hotbarSlot);
+            player.getInventory().selectedSlot = hotbarSlot;
             return true;
         }
 

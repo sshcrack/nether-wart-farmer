@@ -32,7 +32,6 @@ public class Rect {
                 BlockPos inDir = nextBlock.offset(direction);
                 BlockState state = world.getBlockState(inDir);
 
-                MainMod.LOGGER.info("Checking {} with state {}", inDir, state.getBlock().getTranslationKey());
                 if(state.isAir())
                     continue;
 

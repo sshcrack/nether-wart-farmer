@@ -6,36 +6,27 @@ import me.sshcrack.netherwarts.MessageManager;
 import me.sshcrack.netherwarts.Rect;
 import me.sshcrack.netherwarts.manager.FarmState;
 import me.sshcrack.netherwarts.manager.GeneralTimerAccess;
-import me.sshcrack.netherwarts.manager.inv.StorageManager;
-import me.sshcrack.netherwarts.manager.inv.baic.InventoryManager;
+import me.sshcrack.netherwarts.manager.KeyOverwrite;
+import me.sshcrack.netherwarts.manager.inv.storage.StorageManager;
 import me.sshcrack.netherwarts.manager.inv.multiple.MultipleReturnState;
 import me.sshcrack.netherwarts.manager.inv.multiple.QuickItemMover;
 import me.sshcrack.netherwarts.manager.inv.single.SingleItemMover;
+import me.sshcrack.netherwarts.manager.movement.MovementHandler;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.NetherWartBlock;
-import net.minecraft.block.ShulkerBoxBlock;
 import net.minecraft.block.entity.BlockEntityType;
 import net.minecraft.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.option.GameOptions;
 import net.minecraft.client.render.GameRenderer;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.item.Items;
 import net.minecraft.util.Formatting;
-import net.minecraft.util.Hand;
 import net.minecraft.util.Pair;
-import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import org.jetbrains.annotations.Nullable;
-import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -47,33 +38,44 @@ import java.util.Optional;
 @Mixin(GameRenderer.class)
 public abstract class GeneralTimerMixin implements GeneralTimerAccess {
     private static final int MAX_WART_AGE = 3;
-    private static final int HOE_SLOT = 2;
+
+    private static final int HOE_SLOT = 0;
     private static final int WART_SLOT = 8;
+    private static  final int BREAD_SLOT = 1;
+
+    private static final int TRIGGER_FOOD_LEVEL = 13;
     private static final int MIN_SLOTS_FREE = 4;
 
     private boolean enabled = false;
     private Pair<BlockPos, BlockPos> rect;
 
+    private ClientPlayerEntity player;
+
 
     private final List<BlockPos> toMine = new ArrayList<>();
     private final List<BlockPos> errorBlocksReported = new ArrayList<>();
+
     private List<BlockPos> storageBlocks = new ArrayList<>();
+    private List<BlockPos> foodShulkers = new ArrayList<>();
+    private BlockPos bed;
 
     private BlockPos curr = null;
     private FarmState state = FarmState.WALKING;
 
     private SingleItemMover singleMover;
     private QuickItemMover quickMover;
+    private MovementHandler movement;
+    private StorageManager wartStorage;
+    private ShulkerBoxBlockEntity cachedShulker;
 
     private int currTick = 0;
 
+    private int testTick = 1;
     private ShulkerBoxBlockEntity cachedTest = null;
     private boolean testMode = false;
 
     @Inject(method = "tick", at = @At("TAIL"))
     private void onTick(CallbackInfo ci) {
-        ClientPlayerEntity player = MinecraftClient.getInstance().player;
-
         if(testMode) {
             if(storageBlocks.size() == 0 || cachedTest == null) {
                 ClientWorld world = player.clientWorld;
@@ -87,7 +89,7 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
 
                 storageBlocks = StorageManager.getOuterBlocks(world, rect, Blocks.RED_SHULKER_BOX);
                 BlockPos desired = storageBlocks.get(0);
-                Optional<ShulkerBoxBlockEntity> entity = player.getWorld().getBlockEntity(desired, BlockEntityType.SHULKER_BOX);
+                Optional<ShulkerBoxBlockEntity> entity = player.clientWorld.getBlockEntity(desired, BlockEntityType.SHULKER_BOX);
                 if(entity.isEmpty())
                     return;
 
@@ -97,12 +99,7 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
             if(quickMover == null)
                 quickMover = new QuickItemMover(player);
 
-            MultipleReturnState state = quickMover.moveAll(Items.NETHER_WART, true, cachedTest, () -> {
-                BlockPos pos = storageBlocks.get(0);
-
-                BlockHitResult blockHit = new BlockHitResult(pos.toCenterPos(), Direction.EAST, pos, false);
-                MinecraftClient.getInstance().interactionManager.interactBlock(player, Hand.MAIN_HAND, blockHit);
-            });
+            MultipleReturnState state = quickMover.moveAll(Items.NETHER_WART, true, cachedTest);
 
             if(state == MultipleReturnState.OK || state == MultipleReturnState.NO_SPACE_LEFT || state == MultipleReturnState.ITEM_NOT_FOUND || state == MultipleReturnState.SCREEN_NULL) {
                 testMode = false;
@@ -110,7 +107,8 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
 
         }
 
-        if (enabled)
+        testTick++;
+        if (enabled && testTick % 3 == 0)
             this.inner_tick();
     }
 
@@ -118,11 +116,13 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
 
     @Override
     public void inner_tick() {
-        /*
         if (player.getHealth() < 5 || player.getVelocity().y > .5) {
             panic();
             return;
         }
+
+        if(!wartStorage.isInitialized() && !wartStorage.initializeTick())
+            return;
 
         currTick++;
         if (currTick % 20 == 0)
@@ -141,61 +141,43 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
             MessageManager.sendMsgF(Formatting.YELLOW + "Walking to wart at %s", curr);
         }
 
-        handleState();*/
-    }
-
-    private void lookAtYawOnly(Vec3d target) {
-        ClientPlayerEntity player = MinecraftClient.getInstance().player;
-        Vec3d pos = player.getPos();
-        double d = target.x - pos.x;
-        double f = target.z - pos.z;
-
-        player.setYaw(MathHelper.wrapDegrees((float)(MathHelper.atan2(f, d) * 57.2957763671875D) - 90.0F));
-        player.setHeadYaw(player.getYaw());
-        player.prevYaw = player.getYaw();
+        handleState();
     }
 
     public void handleState() {
-        ClientPlayerEntity player = MinecraftClient.getInstance().player;
         GameOptions options = MinecraftClient.getInstance().options;
         if(state == FarmState.IDLE) {
             return;
         }
 
         if (state == FarmState.WALKING) {
-            options.forwardKey.setPressed(true);
-            Vec3d currCenter = Vec3d.ofCenter(curr, 0);
-
-            lookAtYawOnly(currCenter);
-            BlockPos playerPos = player.getBlockPos().up();
-            if (playerPos.compareTo(curr) != 0)
+            if (!movement.walk(curr))
                 return;
 
-            options.forwardKey.setPressed(false);
             state = FarmState.MOVING_HOE;
-
+            singleMover.reset();
+            MessageManager.sendMsgF(Formatting.YELLOW + "Moving to hoe...");
         }
 
         if(state == FarmState.MOVING_HOE) {
-            MessageManager.sendMsgF(Formatting.YELLOW + "Moving to hoe...");
-            boolean hasHoe = singleMover.scrollToHoe(HOE_SLOT);
-            if(!hasHoe)
-                MainMod.LOGGER.info("Could not find hoe to use.");
+            if(!singleMover.scrollToHoe(HOE_SLOT))
+                return;
 
             state = FarmState.BREAKING;
-            MessageManager.sendMsgF(Formatting.YELLOW + "Breaking block...");
+            MessageManager.sendMsgF(Formatting.YELLOW + "Breaking block at %s...", curr);
         }
 
         if (state == FarmState.BREAKING) {
             player.setPitch(90);
 
-            options.attackKey.setPressed(true);
+            KeyOverwrite.press(options.attackKey);
             if (!player.getWorld().isAir(curr))
                 return;
 
 
-            options.attackKey.setPressed(false);
+            KeyOverwrite.unset(options.attackKey);
             state = FarmState.MOVING_WARTS;
+            singleMover.reset();
             MessageManager.sendMsgF(Formatting.YELLOW + "Moving warts to place...");
         }
 
@@ -210,22 +192,78 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
 
         if (state == FarmState.PLACING) {
             player.setPitch(90);
-            options.useKey.setPressed(true);
+            KeyOverwrite.press(options.useKey);
 
             if (player.getWorld().isAir(curr))
                 return;
 
-            options.useKey.setPressed(false);
+            KeyOverwrite.unset(options.useKey);
             state = FarmState.CHECKING;
             MessageManager.sendMsgF(Formatting.YELLOW + "Checking inventory for space left...");
         }
 
         if(state == FarmState.CHECKING) {
+            cachedShulker = MinecraftClient.getInstance().world.getBlockEntity(foodShulkers.get(0), BlockEntityType.SHULKER_BOX).get();
+            singleMover.reset();
+
+            boolean shouldEat = player.getHungerManager().getFoodLevel() < TRIGGER_FOOD_LEVEL;
             boolean shouldMove = singleMover.getSlotsFree() < MIN_SLOTS_FREE;
-            if(!shouldMove) {
-                next();
-                return;
+            if(shouldMove) {
+                MessageManager.sendMsgF(Formatting.YELLOW + "Moving items...");
+                state = FarmState.FULL_INV;
+            } else if(shouldEat) {
+                MessageManager.sendMsgF(Formatting.BLUE + "Eating (Going to shulker)...");
+                if(player.getInventory().contains(Items.BREAD.getDefaultStack())) {
+                    state = FarmState.EAT_TO_HOTBAR;
+                } else {
+                    state = FarmState.EAT_QUICK_MOVE;
+                }
             }
+            else {
+                next();
+            }
+            return;
+        }
+
+        if(state == FarmState.FULL_INV) {
+            if(!wartStorage.store(Items.NETHER_WART, true))
+                return;
+
+            state = FarmState.CHECKING;
+        }
+
+        if(state == FarmState.EAT_GOTO) {
+            if(!movement.walk(foodShulkers.get(0),p -> foodShulkers.get(0).getSquaredDistance(p) <= 2))
+                return;
+
+            MessageManager.sendMsg(Formatting.BLUE + "Quick moving bread...");
+            state = FarmState.EAT_QUICK_MOVE;
+        }
+
+        if(state == FarmState.EAT_QUICK_MOVE) {
+            if(!quickMover.moveSingleBool(Items.BREAD, false, cachedShulker))
+                return;
+
+            MessageManager.sendMsg(Formatting.BLUE + "Moving bread to hotbar...");
+            state = FarmState.EAT_TO_HOTBAR;
+        }
+
+        if(state == FarmState.EAT_TO_HOTBAR) {
+            if(!singleMover.moveBreadTick(BREAD_SLOT))
+                return;
+
+            MessageManager.sendMsg(Formatting.BLUE + "Eating bread...");
+            state = FarmState.EAT;
+        }
+
+        if(state == FarmState.EAT) {
+            KeyOverwrite.press(options.useKey);
+
+            if(player.getHungerManager().isNotFull())
+                return;
+
+            KeyOverwrite.unset(options.useKey);
+            state = FarmState.CHECKING;
         }
     }
 
@@ -236,7 +274,6 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
     }
 
     public void checkWarts() {
-        ClientPlayerEntity player = MinecraftClient.getInstance().player;
         ClientWorld world = player.clientWorld;
 
         BlockPos start = rect.getLeft().up();
@@ -279,8 +316,12 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
     @Override
     public boolean start() {
         ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        this.player = player;
+
+        assert player != null;
         singleMover = new SingleItemMover(player);
         quickMover = new QuickItemMover(player);
+        movement = new MovementHandler(player);
 
         ClientWorld world = player.clientWorld;
         BlockPos pos = player.getBlockPos();
@@ -292,13 +333,29 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
         }
 
         storageBlocks = StorageManager.getOuterBlocks(world, rect, Blocks.RED_SHULKER_BOX);
+        foodShulkers = StorageManager.getOuterBlocks(world, rect, Blocks.GRAY_SHULKER_BOX);
+        List<BlockPos> beds = StorageManager.getOuterBlocks(world, rect, Blocks.WHITE_BED);
+        if(beds.size() == 0) {
+            MessageManager.sendMsg(Formatting.RED + "Could not find white bed.");
+            return false;
+        }
+
+        bed = beds.get(0);
+
+
+        wartStorage = new StorageManager(player, storageBlocks);
+
         MessageManager.sendMsg("Starting to farm...");
+        state = FarmState.IDLE;
+        curr = null;
         enabled = true;
         return true;
     }
 
     @Override
     public boolean stop() {
+        KeyOverwrite.reset();
+
         enabled = false;
         MessageManager.sendMsg("Alright boss, stopped farming!");
         return true;
@@ -307,5 +364,7 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
     public void panic() {
         MessageManager.sendMsg(Formatting.DARK_RED + "Detected Health under 5HP. Teleporting you home...");
         MinecraftClient.getInstance().getNetworkHandler().sendChatCommand("/home");
+
+        stop();
     }
 }

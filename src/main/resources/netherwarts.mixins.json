@@ -6,7 +6,8 @@
   "mixins": [],
   "client": [
     "GeneralTimerMixin",
-    "InputUtilMixin"
+    "InputUtilMixin",
+    "KeyBindingMixin"
   ],
   "injectors": {
     "defaultRequire": 1

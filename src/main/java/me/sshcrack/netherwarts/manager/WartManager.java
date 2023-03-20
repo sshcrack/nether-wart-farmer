@@ -5,7 +5,7 @@ import net.minecraft.client.MinecraftClient;
 public class WartManager {
     private final GeneralTimerAccess timer;
     public WartManager() {
-        this.timer = (GeneralTimerAccess) MinecraftClient.getInstance();
+        this.timer = (GeneralTimerAccess) MinecraftClient.getInstance().gameRenderer;
     }
 
     public int start() {

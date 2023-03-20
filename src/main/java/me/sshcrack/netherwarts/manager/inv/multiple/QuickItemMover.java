@@ -1,7 +1,11 @@
 package me.sshcrack.netherwarts.manager.inv.multiple;
 
+import com.mojang.datafixers.kinds.IdF;
+import me.sshcrack.netherwarts.MessageManager;
 import me.sshcrack.netherwarts.manager.KeyOverwrite;
+import me.sshcrack.netherwarts.manager.inv.ShulkerHelper;
 import me.sshcrack.netherwarts.manager.inv.baic.InventoryManager;
+import net.minecraft.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.network.ClientPlayerEntity;
@@ -10,7 +14,13 @@ import net.minecraft.inventory.Inventory;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.screen.ScreenHandler;
+import net.minecraft.screen.ShulkerBoxScreenHandler;
 import net.minecraft.screen.slot.Slot;
+import net.minecraft.util.Formatting;
+import net.minecraft.util.Hand;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec2f;
 
 import java.util.ArrayList;
@@ -32,42 +42,48 @@ public class QuickItemMover extends InventoryManager {
     }
 
     private boolean hasSpaceLeft(Inventory inv) {
-        for(int i = 0; i < inv.size(); i++) {
+        for (int i = 0; i < inv.size(); i++) {
             ItemStack stack = inv.getStack(i);
-            if(stack.isEmpty())
+            if (stack.isEmpty())
                 return true;
         }
 
         return false;
     }
 
-    private List<Slot> getMatchingSlots(Item kind, boolean fromPlayerToChest, Inventory block) {
+    private List<Slot> getMatchingSlots(Item kind, boolean fromPlayerToChest) {
         ScreenHandler handler = player.currentScreenHandler;
         List<Slot> outList = new ArrayList<>();
 
-        if(fromPlayerToChest) {
+        if (fromPlayerToChest) {
             PlayerInventory inv = player.getInventory();
-            for (ItemStack stack : inv.main) {
-                if(!stack.isOf(kind))
+
+            for (int i = 0; i < inv.main.size(); i++) {
+                ItemStack stack = inv.main.get(i);
+                if (!stack.isOf(kind))
                     continue;
 
-                int iSlot = inv.getSlotWithStack(stack);
-                OptionalInt handlerSlot = handler.getSlotIndex(inv, iSlot);
-
-                if(handlerSlot.isEmpty())
+                OptionalInt handlerSlot = handler.getSlotIndex(inv, i);
+                if (handlerSlot.isEmpty())
                     continue;
 
                 outList.add(handler.getSlot(handlerSlot.getAsInt()));
             }
         } else {
-            for(int i = 0; i < block.size(); i++) {
-                ItemStack stack = block.getStack(i);
-                if(!stack.isOf(kind))
+            if(!(handler instanceof ShulkerBoxScreenHandler))
+                return new ArrayList<>();
+
+            ShulkerBoxScreenHandler h = (ShulkerBoxScreenHandler) handler;
+            List<ItemStack> matching = h.getStacks().subList(0, ShulkerBoxBlockEntity.INVENTORY_SIZE);
+            Inventory shulkerInv = h.slots.get(0).inventory;
+            for (int i = 0; i < matching.size(); i++) {
+                ItemStack stack = matching.get(i);
+                if (!stack.isOf(kind))
                     continue;
 
-                OptionalInt handlerSlot = handler.getSlotIndex(block, i);
+                OptionalInt handlerSlot = handler.getSlotIndex(shulkerInv, i);
 
-                if(handlerSlot.isEmpty())
+                if (handlerSlot.isEmpty())
                     continue;
 
                 outList.add(handler.getSlot(handlerSlot.getAsInt()));
@@ -77,40 +93,44 @@ public class QuickItemMover extends InventoryManager {
         return outList;
     }
 
-    public MultipleReturnState moveSingle(List<Slot> slots, Inventory block, Runnable openShulker) {
-        return  moveSingle(slots, block, openShulker, true);
+    public MultipleReturnState moveSingle(Item kind, boolean fromPlayerToChest, ShulkerBoxBlockEntity entity) {
+        return moveSingle(kind, fromPlayerToChest, entity, () -> {
+        });
     }
 
-    public MultipleReturnState moveSingle(List<Slot> slots, Inventory block, Runnable openShulker, boolean shouldClose) {
-        if(slots.size() == 0) {
-            sampleSlots = null;
-            state = State.INITIALIZING;
-            return MultipleReturnState.ITEM_NOT_FOUND;
-        }
-
-        if(state == State.INITIALIZING) {
-            openShulker.run();
-            block.onOpen(player);
+    public MultipleReturnState moveSingle(Item kind, boolean fromPlayerToChest, ShulkerBoxBlockEntity entity, Runnable beforeClosingScreen) {
+        if (state == State.INITIALIZING) {
+            ShulkerHelper.openShulker(entity.getPos());
+            entity.onOpen(player);
             state = State.WAIT_FOR_SCREEN;
             return MultipleReturnState.WAIT;
         }
 
-        if(state == State.WAIT_FOR_SCREEN) {
+        if (state == State.WAIT_FOR_SCREEN) {
             currTick++;
-            if(currTick % 20 == 0) {
+            if (currTick % 20 == 0) {
                 state = State.SHIFTING_ITEMS;
             }
             return MultipleReturnState.WAIT;
         }
 
         Screen screen = MinecraftClient.getInstance().currentScreen;
-        if(screen == null) {
+        if (screen == null) {
             state = State.INITIALIZING;
             return MultipleReturnState.SCREEN_NULL;
         }
 
-        Slot toClick = slots.get(0);
-        if(state == State.SHIFTING_ITEMS) {
+        if (state == State.SHIFTING_ITEMS) {
+            List<Slot> slots = getMatchingSlots(kind, fromPlayerToChest);
+            if (slots.size() == 0) {
+                state = State.INITIALIZING;
+                ShulkerHelper.closeShulker(entity);
+                return MultipleReturnState.ITEM_NOT_FOUND;
+            }
+
+            Slot toClick = slots.get(0);
+
+
             Vec2f clickPos = getCoordinatesAt(screen, toClick);
             KeyOverwrite.press(SHIFT_KEY);
             screen.mouseClicked(clickPos.x, clickPos.y, 0);
@@ -120,14 +140,11 @@ public class QuickItemMover extends InventoryManager {
             state = State.CLOSING;
 
             currTick = 1;
-        } else if(state == State.CLOSING) {
+        } else if (state == State.CLOSING) {
             currTick++;
-            if(currTick % 5 == 0) {
-                if(shouldClose) {
-                    block.onClose(player);
-                    MinecraftClient.getInstance().setScreen(null);
-                    sampleSlots = null;
-                }
+            if (currTick % 10 == 0) {
+                ShulkerHelper.closeShulker(entity);
+                sampleSlots = null;
 
                 state = State.INITIALIZING;
                 return MultipleReturnState.OK;
@@ -137,49 +154,45 @@ public class QuickItemMover extends InventoryManager {
         return MultipleReturnState.WAIT;
     }
 
-    public MultipleReturnState moveAll(Item kind, boolean fromPlayerToChest, Inventory blockInv, Runnable openShulker) {
-        if(sampleSlots == null)
-            sampleSlots = getMatchingSlots(kind, fromPlayerToChest, blockInv);
+    public MultipleReturnState moveAll(Item kind, boolean fromPlayerToChest, ShulkerBoxBlockEntity entity) {
+        return moveAll(kind, fromPlayerToChest, entity, () -> {
+        });
+    }
 
-        if(sampleSlots.size() <= 1)
-            return moveSingle(sampleSlots, blockInv, openShulker);
+    public MultipleReturnState moveAll(Item kind, boolean fromPlayerToChest, ShulkerBoxBlockEntity entity, Runnable beforeClosingScreen) {
 
 
         Slot initialSlot = sampleSlots.get(0);
         Slot secondary = sampleSlots.get(1);
-
-        if(secondary == null)
-            return moveSingle(sampleSlots, blockInv, openShulker);
-
-        if(state == State.INITIALIZING) {
-            openShulker.run();
-            blockInv.onOpen(player);
+        if (state == State.INITIALIZING) {
+            ShulkerHelper.openShulker(entity.getPos());
+            entity.onOpen(player);
             state = State.WAIT_FOR_SCREEN;
 
             return MultipleReturnState.WAIT;
         }
 
-        if(state == State.WAIT_FOR_SCREEN) {
+        if (state == State.WAIT_FOR_SCREEN) {
             currTick++;
-            if(currTick % 20 == 0) {
+            if (currTick % 20 == 0) {
                 state = State.CLICKING_SAMPLE;
             }
             return MultipleReturnState.WAIT;
         }
 
         Screen screen = MinecraftClient.getInstance().currentScreen;
-        if(screen == null) {
+        if (screen == null) {
             state = State.INITIALIZING;
             sampleSlots = null;
             return MultipleReturnState.SCREEN_NULL;
         }
 
-        if(state == State.CLICKING_SAMPLE) {
-            sampleSlots = getMatchingSlots(kind, fromPlayerToChest, blockInv);
+        if (state == State.CLICKING_SAMPLE) {
+            sampleSlots = getMatchingSlots(kind, fromPlayerToChest);
             initialSlot = sampleSlots.get(0);
 
             currTick++;
-            if(currTick % 10 == 0) {
+            if (currTick % 10 == 0) {
                 Vec2f pos = getCoordinatesAt(screen, initialSlot);
                 screen.mouseClicked(pos.x, pos.y, 0);
                 screen.mouseReleased(pos.x, pos.y, 0);
@@ -187,9 +200,9 @@ public class QuickItemMover extends InventoryManager {
                 state = State.SHIFTING_ITEMS;
                 currTick = 1;
             }
-        } else if(state == State.SHIFTING_ITEMS) {
+        } else if (state == State.SHIFTING_ITEMS) {
             currTick++;
-            if(currTick % 10 == 0) {
+            if (currTick % 10 == 0) {
                 Vec2f pos = getCoordinatesAt(screen, secondary);
 
                 KeyOverwrite.press(SHIFT_KEY);
@@ -200,21 +213,26 @@ public class QuickItemMover extends InventoryManager {
             }
         } else if (state == State.SHIFTING_ITEMS_DOUBLE) {
             currTick++;
-            if(currTick % 3 == 0) {
+            if (currTick % 3 == 0) {
                 Vec2f pos = getCoordinatesAt(screen, secondary);
 
                 screen.mouseClicked(pos.x, pos.y, 0);
                 screen.mouseReleased(pos.x, pos.y, 0);
 
                 KeyOverwrite.unset(SHIFT_KEY);
+                beforeClosingScreen.run();
                 state = State.CLOSING;
+                currTick = 1;
             }
-        }else if(state == State.CLOSING) {
+        } else if (state == State.CLOSING) {
             currTick++;
-            if(currTick % 5 == 0) {
-                blockInv.onClose(player);
-                MinecraftClient.getInstance().setScreen(null);
+            if (currTick % 5 == 0) {
+                Vec2f pos = getCoordinatesAt(screen, initialSlot);
+                screen.mouseClicked(pos.x, pos.y, 0);
+                screen.mouseReleased(pos.x, pos.y, 0);
 
+                ShulkerHelper.closeShulker(entity);
+                MessageManager.sendMsg(Formatting.RED + "Closing thingy");
                 state = State.INITIALIZING;
 
                 sampleSlots = null;
@@ -225,6 +243,38 @@ public class QuickItemMover extends InventoryManager {
 
         return MultipleReturnState.WAIT;
     }
+
+    public boolean moveAllBool(Item kind, boolean fromPlayerToChest, ShulkerBoxBlockEntity entity) {
+        return moveAllBool(kind, fromPlayerToChest, entity, () -> {
+        });
+    }
+
+    public boolean moveAllBool(Item kind, boolean fromPlayerToChest, ShulkerBoxBlockEntity entity, Runnable beforeClosingScreen) {
+        MultipleReturnState state = moveAll(kind, fromPlayerToChest, entity, beforeClosingScreen);
+        if (state == MultipleReturnState.ITEM_NOT_FOUND) {
+            MessageManager.sendMsgF(Formatting.RED + "Item could not be found %s pos: %s playerToChest:", kind.asItem().getTranslationKey(), entity.getPos(), fromPlayerToChest);
+        } else if (state == MultipleReturnState.SCREEN_NULL) {
+            MessageManager.sendMsgF(Formatting.RED + "Could not open screen item: %s pos: %s playerToChest: %s", kind.asItem().getTranslationKey(), entity.getPos(), fromPlayerToChest);
+        } else if (state == MultipleReturnState.NO_SPACE_LEFT) {
+            MessageManager.sendMsgF(Formatting.RED + "No space left on inventory item: %s pos: %s playerToChest: %s", kind.asItem().getTranslationKey(), entity.getPos(), fromPlayerToChest);
+        }
+
+        return state == MultipleReturnState.OK;
+    }
+
+    public boolean moveSingleBool(Item kind, boolean fromPlayerToChest, ShulkerBoxBlockEntity entity) {
+        MultipleReturnState state = moveSingle(kind, fromPlayerToChest, entity);
+        if (state == MultipleReturnState.ITEM_NOT_FOUND) {
+            MessageManager.sendMsgF(Formatting.RED + "Item could not be found %s pos: %s playerToChest:", kind.asItem().getTranslationKey(), entity.getPos(), fromPlayerToChest);
+        } else if (state == MultipleReturnState.SCREEN_NULL) {
+            MessageManager.sendMsgF(Formatting.RED + "Could not open screen item: %s pos: %s playerToChest: %s", kind.asItem().getTranslationKey(), entity.getPos(), fromPlayerToChest);
+        } else if (state == MultipleReturnState.NO_SPACE_LEFT) {
+            MessageManager.sendMsgF(Formatting.RED + "No space left on inventory item: %s pos: %s playerToChest: %s", kind.asItem().getTranslationKey(), entity.getPos(), fromPlayerToChest);
+        }
+
+        return state == MultipleReturnState.OK;
+    }
+
 
     enum State {
         INITIALIZING,

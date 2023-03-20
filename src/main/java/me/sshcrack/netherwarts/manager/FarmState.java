@@ -7,5 +7,12 @@ public enum FarmState {
     BREAKING,
     MOVING_WARTS,
     PLACING,
-    CHECKING
+    CHECKING,
+    FULL_INV,
+    EAT_GOTO,
+    EAT_QUICK_MOVE,
+    EAT_TO_HOTBAR,
+    EAT,
+    GOTO_BED,
+    SLEEP
 }
