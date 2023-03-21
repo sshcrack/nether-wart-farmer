@@ -147,7 +147,6 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
                 return;
 
             state = FarmState.MOVING_HOE;
-            singleMover.reset();
             MessageManager.sendMsgF(Formatting.YELLOW + "Moving to hoe...");
         }
 
@@ -169,7 +168,6 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
 
             KeyOverwrite.unset(options.attackKey);
             state = FarmState.MOVING_WARTS;
-            singleMover.reset();
             MessageManager.sendMsgF(Formatting.YELLOW + "Moving warts to place...");
         }
 
@@ -191,12 +189,13 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
 
             KeyOverwrite.unset(options.useKey);
             state = FarmState.CHECKING;
+            currTick = 1;
             MessageManager.sendMsgF(Formatting.YELLOW + "Checking inventory for space left...");
         }
 
         if(state == FarmState.CHECKING) {
+            currTick++;
             cachedShulker = MinecraftClient.getInstance().world.getBlockEntity(foodShulkers.get(0), BlockEntityType.SHULKER_BOX).get();
-            singleMover.reset();
 
             boolean shouldEat = player.getHungerManager().getFoodLevel() < TRIGGER_FOOD_LEVEL;
             boolean shouldMove = singleMover.getSlotsFree() < MIN_SLOTS_FREE;
@@ -215,7 +214,9 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
                MessageManager.sendMsg(Formatting.BLUE + "Sleeping...");
                state = FarmState.GOTO_BED;
             }  else {
-                next();
+                if(currTick % 10 == 0) {
+                    next();
+                }
             }
             return;
         }
@@ -299,6 +300,7 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
     }
 
     private void next() {
+        MessageManager.sendMsg(Formatting.LIGHT_PURPLE +  "Ready for next wart.");
         toMine.remove(curr);
         curr = null;
         state = FarmState.IDLE;
@@ -336,6 +338,7 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
                 }
 
                 if (!contains) {
+                    MessageManager.sendMsgF(Formatting.GREEN +  "Grown Wart found at %s", pos);
                     MainMod.LOGGER.info("Grown Wart found at {}", pos);
                     toMine.add(pos);
                 }
@@ -364,8 +367,8 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
             return false;
         }
 
-        storageBlocks = StorageManager.getOuterBlocks(world, rect, Blocks.RED_SHULKER_BOX);
-        foodShulkers = StorageManager.getOuterBlocks(world, rect, Blocks.GRAY_SHULKER_BOX);
+        storageBlocks = StorageManager.getOuterBlocks(world, rect, Blocks.WHITE_SHULKER_BOX);
+        foodShulkers = StorageManager.getOuterBlocks(world, rect, Blocks.LIGHT_GRAY_SHULKER_BOX);
         List<BlockPos> beds = StorageManager.getOuterBlocks(world, rect, Blocks.WHITE_BED);
         if(beds.size() == 0) {
             MessageManager.sendMsg(Formatting.RED + "Could not find white bed.");

@@ -21,16 +21,11 @@ import java.awt.*;
 import java.util.OptionalInt;
 
 public class SingleItemMover extends InventoryManager {
-    private SingleInvState singleState = SingleInvState.MOVING_SOURCE;
     private int currTick = 0;
     private Slot lowestSlot;
 
     public SingleItemMover(ClientPlayerEntity player) {
         super(player);
-    }
-
-    public void reset() {
-        singleState = SingleInvState.MOVING_SOURCE;
     }
 
     public boolean scrollToHoe(int hotbarSlot) {
@@ -58,80 +53,42 @@ public class SingleItemMover extends InventoryManager {
     }
 
     private boolean moveItems(Item kind, int hotbarSlot) {
-        int destinationSlot = 36 + hotbarSlot;
         ScreenHandler handler = player.currentScreenHandler;
 
         currTick++;
-        if(singleState == SingleInvState.MOVING_SOURCE) {
-            if(currTick % 30 == 0) {
-                PlayerInventory inv = player.getInventory();
+        if(currTick % 30 == 0) {
+            PlayerInventory inv = player.getInventory();
 
-                ItemStack lowestStack = null;
-                lowestSlot = null;
+            ItemStack lowestStack = null;
+            lowestSlot = null;
 
-                for (ItemStack stack : inv.main) {
-                    if (!stack.isOf(kind))
-                        continue;
+            for (ItemStack stack : inv.main) {
+                if (!stack.isOf(kind))
+                    continue;
 
-                    if (lowestStack != null && lowestStack.getCount() < stack.getCount())
-                        continue;
+                if (lowestStack != null && lowestStack.getCount() < stack.getCount())
+                    continue;
 
 
-                    OptionalInt optSlot = handler.getSlotIndex(inv, inv.getSlotWithStack(stack));
-                    if (optSlot.isEmpty()) {
-                        MessageManager.sendMsgF(Formatting.YELLOW + "Could not find slot with stack %s", stack);
-                        continue;
-                    }
-
-                    lowestStack = stack;
-                    lowestSlot = handler.getSlot(optSlot.getAsInt());
+                OptionalInt optSlot = handler.getSlotIndex(inv, inv.getSlotWithStack(stack));
+                if (optSlot.isEmpty()) {
+                    MessageManager.sendMsgF(Formatting.YELLOW + "Could not find slot with stack %s", stack);
+                    continue;
                 }
 
-                if (lowestStack == null)
-                    return false;
-/*
-                Vec2f start = getCoordinatesAt(screen, lowestSlot);
-
-                screen.mouseClicked(start.x, start.y, 0);
-                screen.mouseReleased(start.x, start.y, 0);*/
-
-                ScreenHandler currH = player.currentScreenHandler;
-                Int2ObjectArrayMap<ItemStack> map = new Int2ObjectArrayMap<>();
-                map.put(lowestSlot.id, ItemStack.EMPTY);
-                player.networkHandler.sendPacket(new ClickSlotC2SPacket(currH.syncId, currH.getRevision(), lowestSlot.id, 0, SlotActionType.PICKUP, lowestSlot.getStack(), map));
-                singleState = SingleInvState.MOVING_DEST;
-                MessageManager.sendMsgF("Moving dest");
-                currTick = 1;
+                lowestStack = stack;
+                lowestSlot = handler.getSlot(optSlot.getAsInt());
             }
-        } else if(singleState == SingleInvState.MOVING_DEST) {
-            if(currTick % 30 == 0) {
-                Slot dest = handler.getSlot(destinationSlot);
-                /*Vec2f end = getCoordinatesAt(screen, dest);
 
-                screen.mouseClicked(end.x, end.y, 0);
-                screen.mouseReleased(end.x, end.y, 0);*/
-                ScreenHandler currH = player.currentScreenHandler;
-                Int2ObjectArrayMap<ItemStack> map = new Int2ObjectArrayMap<>();
-                map.put(dest.id, lowestSlot.getStack());
-                player.networkHandler.sendPacket(new ClickSlotC2SPacket(currH.syncId, currH.getRevision(), dest.id, 0, SlotActionType.PICKUP, dest.getStack(), map));
+            if (lowestStack == null)
+                return false;
 
-                MessageManager.sendMsgF("Selecting slot %s (checking)", hotbarSlot);
-                player.getInventory().selectedSlot = hotbarSlot;
-                currTick = 1;
+            screenAccess.onHotbarKeyPressedAccessed(lowestSlot, hotbarSlot);
 
-                if(lowestSlot.getStack().isEmpty())
-                    player.getInventory().removeStack(dest.getIndex());
-                else
-                    player.getInventory().setStack(dest.getIndex(), lowestSlot.getStack());
-
-                if(dest.getStack().isEmpty())
-                    player.getInventory().removeStack(lowestSlot.getIndex());
-                else
-                    player.getInventory().setStack(lowestSlot.getIndex(), dest.getStack());
-                singleState = SingleInvState.MOVING_SOURCE;
-                state = InvState.Closing;
-                return true;
-            }
+            player.getInventory().selectedSlot = hotbarSlot;
+            state = InvState.Closing;
+            currTick = 1;
+            return true;
         }
 
         return false;

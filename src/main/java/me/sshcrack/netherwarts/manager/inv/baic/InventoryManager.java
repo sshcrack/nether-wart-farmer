@@ -3,6 +3,7 @@ package me.sshcrack.netherwarts.manager.inv.baic;
 import me.sshcrack.netherwarts.MainMod;
 import me.sshcrack.netherwarts.MessageManager;
 import me.sshcrack.netherwarts.manager.GeneralHandler;
+import me.sshcrack.netherwarts.manager.HandledScreenAccess;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
@@ -22,6 +23,7 @@ public class InventoryManager extends GeneralHandler {
     private int currTick = 1;
 
     protected InventoryScreen screen;
+    protected HandledScreenAccess screenAccess;
     protected InvState state = InvState.Opening;
 
     public InventoryManager(ClientPlayerEntity player) {
@@ -65,6 +67,7 @@ public class InventoryManager extends GeneralHandler {
     protected boolean basicInvOpener(Supplier<Boolean> processor) {
         if(state == InvState.Opening) {
             screen = new InventoryScreen(player);
+            screenAccess = (HandledScreenAccess) screen;
             MinecraftClient.getInstance().setScreen(screen);
 
             state = InvState.SUSPEND;
