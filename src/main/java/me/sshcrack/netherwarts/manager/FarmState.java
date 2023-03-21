@@ -14,5 +14,7 @@ public enum FarmState {
     EAT_TO_HOTBAR,
     EAT,
     GOTO_BED,
-    SLEEP
+    SLEEP,
+    WAIT_SLEEP,
+    GO_BACK_SLEEP
 }

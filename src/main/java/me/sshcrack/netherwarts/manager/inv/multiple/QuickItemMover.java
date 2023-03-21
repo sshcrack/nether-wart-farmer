@@ -1,9 +1,8 @@
 package me.sshcrack.netherwarts.manager.inv.multiple;
 
-import com.mojang.datafixers.kinds.IdF;
 import me.sshcrack.netherwarts.MessageManager;
 import me.sshcrack.netherwarts.manager.KeyOverwrite;
-import me.sshcrack.netherwarts.manager.inv.ShulkerHelper;
+import me.sshcrack.netherwarts.manager.inv.GeneralHelper;
 import me.sshcrack.netherwarts.manager.inv.baic.InventoryManager;
 import net.minecraft.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.client.MinecraftClient;
@@ -17,14 +16,9 @@ import net.minecraft.screen.ScreenHandler;
 import net.minecraft.screen.ShulkerBoxScreenHandler;
 import net.minecraft.screen.slot.Slot;
 import net.minecraft.util.Formatting;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec2f;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.OptionalInt;
 
@@ -100,7 +94,7 @@ public class QuickItemMover extends InventoryManager {
 
     public MultipleReturnState moveSingle(Item kind, boolean fromPlayerToChest, ShulkerBoxBlockEntity entity, Runnable beforeClosingScreen) {
         if (state == State.INITIALIZING) {
-            ShulkerHelper.openShulker(entity.getPos());
+            GeneralHelper.interactBlock(entity.getPos());
             entity.onOpen(player);
             state = State.WAIT_FOR_SCREEN;
             return MultipleReturnState.WAIT;
@@ -124,7 +118,7 @@ public class QuickItemMover extends InventoryManager {
             List<Slot> slots = getMatchingSlots(kind, fromPlayerToChest);
             if (slots.size() == 0) {
                 state = State.INITIALIZING;
-                ShulkerHelper.closeShulker(entity);
+                GeneralHelper.closeShulker(entity);
                 return MultipleReturnState.ITEM_NOT_FOUND;
             }
 
@@ -143,7 +137,7 @@ public class QuickItemMover extends InventoryManager {
         } else if (state == State.CLOSING) {
             currTick++;
             if (currTick % 10 == 0) {
-                ShulkerHelper.closeShulker(entity);
+                GeneralHelper.closeShulker(entity);
                 sampleSlots = null;
 
                 state = State.INITIALIZING;
@@ -155,17 +149,12 @@ public class QuickItemMover extends InventoryManager {
     }
 
     public MultipleReturnState moveAll(Item kind, boolean fromPlayerToChest, ShulkerBoxBlockEntity entity) {
-        return moveAll(kind, fromPlayerToChest, entity, () -> {
-        });
+        return moveAll(kind, fromPlayerToChest, entity, () -> {});
     }
 
     public MultipleReturnState moveAll(Item kind, boolean fromPlayerToChest, ShulkerBoxBlockEntity entity, Runnable beforeClosingScreen) {
-
-
-        Slot initialSlot = sampleSlots.get(0);
-        Slot secondary = sampleSlots.get(1);
         if (state == State.INITIALIZING) {
-            ShulkerHelper.openShulker(entity.getPos());
+            GeneralHelper.interactBlock(entity.getPos());
             entity.onOpen(player);
             state = State.WAIT_FOR_SCREEN;
 
@@ -189,7 +178,12 @@ public class QuickItemMover extends InventoryManager {
 
         if (state == State.CLICKING_SAMPLE) {
             sampleSlots = getMatchingSlots(kind, fromPlayerToChest);
-            initialSlot = sampleSlots.get(0);
+            if(sampleSlots.size() < 2) {
+                GeneralHelper.closeShulker(entity);
+                return MultipleReturnState.ITEM_NOT_FOUND;
+            }
+
+            Slot initialSlot = sampleSlots.get(0);
 
             currTick++;
             if (currTick % 10 == 0) {
@@ -200,7 +194,14 @@ public class QuickItemMover extends InventoryManager {
                 state = State.SHIFTING_ITEMS;
                 currTick = 1;
             }
-        } else if (state == State.SHIFTING_ITEMS) {
+
+            return MultipleReturnState.WAIT;
+        }
+
+
+        Slot initialSlot = sampleSlots.get(0);
+        Slot secondary = sampleSlots.get(1);
+        if (state == State.SHIFTING_ITEMS) {
             currTick++;
             if (currTick % 10 == 0) {
                 Vec2f pos = getCoordinatesAt(screen, secondary);
@@ -231,7 +232,7 @@ public class QuickItemMover extends InventoryManager {
                 screen.mouseClicked(pos.x, pos.y, 0);
                 screen.mouseReleased(pos.x, pos.y, 0);
 
-                ShulkerHelper.closeShulker(entity);
+                GeneralHelper.closeShulker(entity);
                 MessageManager.sendMsg(Formatting.RED + "Closing thingy");
                 state = State.INITIALIZING;
 

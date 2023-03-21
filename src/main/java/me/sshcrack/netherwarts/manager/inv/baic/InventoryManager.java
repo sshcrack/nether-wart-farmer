@@ -1,6 +1,7 @@
 package me.sshcrack.netherwarts.manager.inv.baic;
 
 import me.sshcrack.netherwarts.MainMod;
+import me.sshcrack.netherwarts.MessageManager;
 import me.sshcrack.netherwarts.manager.GeneralHandler;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
@@ -11,6 +12,7 @@ import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.screen.slot.Slot;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.collection.DefaultedList;
 import net.minecraft.util.math.Vec2f;
 
@@ -85,10 +87,22 @@ public class InventoryManager extends GeneralHandler {
                 screen.close();
                 player.currentScreenHandler.close(player);
                 MinecraftClient.getInstance().setScreen(null);
+                state = InvState.Wait;
+                currTick = 1;
+
+                MessageManager.sendMsg(Formatting.GREEN + "Closing inventory / waiting...");
+            }
+
+            return false;
+        }
+
+        if(state == InvState.Wait) {
+            currTick++;
+            if(currTick % 20 == 0) {
+                MessageManager.sendMsg(Formatting.GREEN + "Done. Continuing...");
                 state = InvState.Opening;
                 return true;
             }
-
             return false;
         }
 

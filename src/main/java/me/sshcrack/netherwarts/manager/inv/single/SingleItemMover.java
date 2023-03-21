@@ -19,6 +19,7 @@ import java.util.OptionalInt;
 
 public class SingleItemMover extends InventoryManager {
     private SingleInvState singleState = SingleInvState.MOVING_SOURCE;
+    private int currTick = 0;
 
     public SingleItemMover(ClientPlayerEntity player) {
         super(player);
@@ -56,50 +57,59 @@ public class SingleItemMover extends InventoryManager {
         int destinationSlot = 36 + hotbarSlot;
         ScreenHandler handler = player.currentScreenHandler;
 
+        currTick++;
         if(singleState == SingleInvState.MOVING_SOURCE) {
-            PlayerInventory inv = player.getInventory();
+            if(currTick % 30 == 0) {
+                PlayerInventory inv = player.getInventory();
 
-            ItemStack lowestStack = null;
-            Slot lowestSlot = null;
+                ItemStack lowestStack = null;
+                Slot lowestSlot = null;
 
-            for (ItemStack stack : inv.main) {
-                if (!stack.isOf(kind))
-                    continue;
+                for (ItemStack stack : inv.main) {
+                    if (!stack.isOf(kind))
+                        continue;
 
-                if (lowestStack != null && lowestStack.getCount() < stack.getCount())
-                    continue;
+                    if (lowestStack != null && lowestStack.getCount() < stack.getCount())
+                        continue;
 
 
-                OptionalInt optSlot = handler.getSlotIndex(inv, inv.getSlotWithStack(stack));
-                if (optSlot.isEmpty()) {
-                    MessageManager.sendMsgF(Formatting.YELLOW + "Could not find slot with stack %s", stack);
-                    continue;
+                    OptionalInt optSlot = handler.getSlotIndex(inv, inv.getSlotWithStack(stack));
+                    if (optSlot.isEmpty()) {
+                        MessageManager.sendMsgF(Formatting.YELLOW + "Could not find slot with stack %s", stack);
+                        continue;
+                    }
+
+                    lowestStack = stack;
+                    lowestSlot = handler.getSlot(optSlot.getAsInt());
                 }
 
-                lowestStack = stack;
-                lowestSlot = handler.getSlot(optSlot.getAsInt());
+                if (lowestStack == null)
+                    return false;
+
+                Vec2f start = getCoordinatesAt(screen, lowestSlot);
+
+                screen.mouseClicked(start.x, start.y, 0);
+                screen.mouseReleased(start.x, start.y, 0);
+                singleState = SingleInvState.MOVING_DEST;
+                MessageManager.sendMsgF("Moving dest");
+                currTick = 1;
             }
-
-            if (lowestStack == null)
-                return false;
-
-            Vec2f start = getCoordinatesAt(screen, lowestSlot);
-
-            screen.mouseClicked(start.x, start.y, 0);
-            screen.mouseReleased(start.x, start.y, 0);
-            singleState = SingleInvState.MOVING_DEST;
-            MessageManager.sendMsgF("Moving dest");
         } else if(singleState == SingleInvState.MOVING_DEST) {
-            Slot dest = handler.getSlot(destinationSlot);
-            Vec2f end = getCoordinatesAt(screen, dest);
+            if(currTick % 30 == 0) {
+                Slot dest = handler.getSlot(destinationSlot);
+                Vec2f end = getCoordinatesAt(screen, dest);
 
-            screen.mouseClicked(end.x, end.y, 0);
-            screen.mouseReleased(end.x, end.y, 0);
-            state = InvState.Closing;
+                screen.mouseClicked(end.x, end.y, 0);
+                screen.mouseReleased(end.x, end.y, 0);
 
-            MessageManager.sendMsgF("Selecting slot %s", hotbarSlot);
-            player.getInventory().selectedSlot = hotbarSlot;
-            return true;
+                MessageManager.sendMsgF("Selecting slot %s (checking)", hotbarSlot);
+                player.getInventory().selectedSlot = hotbarSlot;
+                currTick = 1;
+
+                singleState = SingleInvState.MOVING_SOURCE;
+                state = InvState.Closing;
+                return true;
+            }
         }
 
         return false;

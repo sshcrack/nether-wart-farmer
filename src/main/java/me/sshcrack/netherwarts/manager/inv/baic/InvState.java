@@ -3,5 +3,6 @@ package me.sshcrack.netherwarts.manager.inv.baic;
 public enum InvState {
     Opening,
     SUSPEND,
-    Closing
+    Closing,
+    Wait
 }
