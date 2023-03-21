@@ -6,6 +6,7 @@
   "mixins": [],
   "client": [
     "GeneralTimerMixin",
+    "HandledScreenMixin",
     "InputUtilMixin",
     "KeyBindingMixin"
   ],

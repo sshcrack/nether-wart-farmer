@@ -1,5 +1,6 @@
 package me.sshcrack.netherwarts.manager.inv.single;
 
+import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
 import me.sshcrack.netherwarts.MessageManager;
 import me.sshcrack.netherwarts.manager.inv.baic.InvState;
 import me.sshcrack.netherwarts.manager.inv.baic.InventoryManager;
@@ -9,8 +10,10 @@ import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.network.packet.c2s.play.ClickSlotC2SPacket;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.screen.slot.Slot;
+import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.Vec2f;
 
@@ -20,6 +23,7 @@ import java.util.OptionalInt;
 public class SingleItemMover extends InventoryManager {
     private SingleInvState singleState = SingleInvState.MOVING_SOURCE;
     private int currTick = 0;
+    private Slot lowestSlot;
 
     public SingleItemMover(ClientPlayerEntity player) {
         super(player);
@@ -63,7 +67,7 @@ public class SingleItemMover extends InventoryManager {
                 PlayerInventory inv = player.getInventory();
 
                 ItemStack lowestStack = null;
-                Slot lowestSlot = null;
+                lowestSlot = null;
 
                 for (ItemStack stack : inv.main) {
                     if (!stack.isOf(kind))
@@ -85,11 +89,16 @@ public class SingleItemMover extends InventoryManager {
 
                 if (lowestStack == null)
                     return false;
-
+/*
                 Vec2f start = getCoordinatesAt(screen, lowestSlot);
 
                 screen.mouseClicked(start.x, start.y, 0);
-                screen.mouseReleased(start.x, start.y, 0);
+                screen.mouseReleased(start.x, start.y, 0);*/
+
+                ScreenHandler currH = player.currentScreenHandler;
+                Int2ObjectArrayMap<ItemStack> map = new Int2ObjectArrayMap<>();
+                map.put(lowestSlot.id, ItemStack.EMPTY);
+                player.networkHandler.sendPacket(new ClickSlotC2SPacket(currH.syncId, currH.getRevision(), lowestSlot.id, 0, SlotActionType.PICKUP, lowestSlot.getStack(), map));
                 singleState = SingleInvState.MOVING_DEST;
                 MessageManager.sendMsgF("Moving dest");
                 currTick = 1;
@@ -97,15 +106,28 @@ public class SingleItemMover extends InventoryManager {
         } else if(singleState == SingleInvState.MOVING_DEST) {
             if(currTick % 30 == 0) {
                 Slot dest = handler.getSlot(destinationSlot);
-                Vec2f end = getCoordinatesAt(screen, dest);
+                /*Vec2f end = getCoordinatesAt(screen, dest);
 
                 screen.mouseClicked(end.x, end.y, 0);
-                screen.mouseReleased(end.x, end.y, 0);
+                screen.mouseReleased(end.x, end.y, 0);*/
+                ScreenHandler currH = player.currentScreenHandler;
+                Int2ObjectArrayMap<ItemStack> map = new Int2ObjectArrayMap<>();
+                map.put(dest.id, lowestSlot.getStack());
+                player.networkHandler.sendPacket(new ClickSlotC2SPacket(currH.syncId, currH.getRevision(), dest.id, 0, SlotActionType.PICKUP, dest.getStack(), map));
 
                 MessageManager.sendMsgF("Selecting slot %s (checking)", hotbarSlot);
                 player.getInventory().selectedSlot = hotbarSlot;
                 currTick = 1;
 
+                if(lowestSlot.getStack().isEmpty())
+                    player.getInventory().removeStack(dest.getIndex());
+                else
+                    player.getInventory().setStack(dest.getIndex(), lowestSlot.getStack());
+
+                if(dest.getStack().isEmpty())
+                    player.getInventory().removeStack(lowestSlot.getIndex());
+                else
+                    player.getInventory().setStack(lowestSlot.getIndex(), dest.getStack());
                 singleState = SingleInvState.MOVING_SOURCE;
                 state = InvState.Closing;
                 return true;
