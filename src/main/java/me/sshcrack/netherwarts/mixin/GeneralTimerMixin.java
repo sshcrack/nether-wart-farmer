@@ -9,14 +9,12 @@ import me.sshcrack.netherwarts.manager.GeneralTimerAccess;
 import me.sshcrack.netherwarts.manager.KeyOverwrite;
 import me.sshcrack.netherwarts.manager.inv.GeneralHelper;
 import me.sshcrack.netherwarts.manager.inv.storage.StorageManager;
-import me.sshcrack.netherwarts.manager.inv.multiple.MultipleReturnState;
 import me.sshcrack.netherwarts.manager.inv.multiple.QuickItemMover;
 import me.sshcrack.netherwarts.manager.inv.single.SingleItemMover;
 import me.sshcrack.netherwarts.manager.movement.MovementHandler;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.block.NetherWartBlock;
-import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.entity.BlockEntityType;
 import net.minecraft.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.client.MinecraftClient;
@@ -26,25 +24,24 @@ import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.option.GameOptions;
 import net.minecraft.client.render.GameRenderer;
 import net.minecraft.client.world.ClientWorld;
-import net.minecraft.inventory.SimpleInventory;
 import net.minecraft.item.FoodComponents;
 import net.minecraft.item.Items;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Pair;
+import net.minecraft.util.Util;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import java.text.Format;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 @Mixin(GameRenderer.class)
 public abstract class GeneralTimerMixin implements GeneralTimerAccess {
+    @Shadow private long lastWindowFocusedTime;
     private static final int MAX_WART_AGE = 3;
 
     private static final int HOE_SLOT = 0;
@@ -63,7 +60,6 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
     private final List<BlockPos> toMine = new ArrayList<>();
     private final List<BlockPos> errorBlocksReported = new ArrayList<>();
 
-    private List<BlockPos> storageBlocks = new ArrayList<>();
     private List<BlockPos> foodShulkers = new ArrayList<>();
     private BlockPos bed;
     private BlockPos prevPos;
@@ -80,35 +76,22 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
 
     private int currTick = 0;
 
-    private SingleItemMover cachedTest = null;
-    private boolean testMode = false;
+    @Inject(method="render", at=@At(value = "INVOKE", target = "Lnet/minecraft/client/MinecraftClient;openPauseMenu(Z)V"), cancellable = true)
+    private void onGamePause(float tickDelta, long startTime, boolean tick, CallbackInfo ci) {
+        if(enabled) {
+            ci.cancel();
+            lastWindowFocusedTime = Util.getMeasuringTimeMs();
+        }
+    }
 
     @Inject(method = "tick", at = @At("TAIL"))
     private void onTick(CallbackInfo ci) {
-        if(testMode) {
-            if(cachedTest == null)
-                cachedTest = new SingleItemMover(MinecraftClient.getInstance().player);
-
-
-            //boolean e = cachedTest.tickScrollWart(WART_SLOT);
-
-            boolean e = true;
-
-            Screen screen = new InventoryScreen(player);
-            MinecraftClient.getInstance().setScreen(screen);
-            if(e) {
-                testMode = false;
-            }
-        }
-
         if (enabled)
-            this.inner_tick();
+            this.innerTick();
     }
 
-    public void test() { testMode = !testMode; }
-
     @Override
-    public void inner_tick() {
+    public void innerTick() {
         if (player.getHealth() < 5 || player.getVelocity().y > .5) {
             panic();
             return;
@@ -147,7 +130,7 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
                 return;
 
             state = FarmState.MOVING_HOE;
-            MessageManager.sendMsgF(Formatting.YELLOW + "Moving to hoe...");
+            MessageManager.debugMsg(Formatting.YELLOW + "Moving to hoe...");
         }
 
         if(state == FarmState.MOVING_HOE) {
@@ -155,7 +138,7 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
                 return;
 
             state = FarmState.BREAKING;
-            MessageManager.sendMsgF(Formatting.YELLOW + "Breaking block at %s...", curr);
+            MessageManager.debugMsgF(Formatting.YELLOW + "Breaking block at %s...", curr);
         }
 
         if (state == FarmState.BREAKING) {
@@ -168,7 +151,7 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
 
             KeyOverwrite.unset(options.attackKey);
             state = FarmState.MOVING_WARTS;
-            MessageManager.sendMsgF(Formatting.YELLOW + "Moving warts to place...");
+            MessageManager.debugMsg(Formatting.YELLOW + "Moving warts to place...");
         }
 
         if(state == FarmState.MOVING_WARTS) {
@@ -176,7 +159,7 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
             if (!canContinue)
                 return;
 
-            MessageManager.sendMsgF(Formatting.YELLOW + "Placing warts...");
+            MessageManager.debugMsg(Formatting.YELLOW + "Placing warts...");
             state = FarmState.PLACING;
         }
 
@@ -190,7 +173,7 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
             KeyOverwrite.unset(options.useKey);
             state = FarmState.CHECKING;
             currTick = 1;
-            MessageManager.sendMsgF(Formatting.YELLOW + "Checking inventory for space left...");
+            MessageManager.debugMsg(Formatting.YELLOW + "Checking inventory for space left...");
         }
 
         if(state == FarmState.CHECKING) {
@@ -201,17 +184,17 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
             boolean shouldMove = singleMover.getSlotsFree() < MIN_SLOTS_FREE;
             boolean shouldSleep = GeneralHelper.canSleep();
             if(shouldMove) {
-                MessageManager.sendMsgF(Formatting.YELLOW + "Moving items...");
+                MessageManager.debugMsg(Formatting.YELLOW + "Moving items...");
                 state = FarmState.FULL_INV;
             } else if(shouldEat) {
-                MessageManager.sendMsgF(Formatting.BLUE + "Eating (Going to shulker)...");
+                MessageManager.debugMsg(Formatting.BLUE + "Eating (Going to shulker)...");
                 if(player.getInventory().contains(Items.BREAD.getDefaultStack())) {
                     state = FarmState.EAT_TO_HOTBAR;
                 } else {
                     state = FarmState.EAT_QUICK_MOVE;
                 }
             } else if(shouldSleep) {
-               MessageManager.sendMsg(Formatting.BLUE + "Sleeping...");
+               MessageManager.debugMsg(Formatting.BLUE + "Sleeping...");
                state = FarmState.GOTO_BED;
             }  else {
                 if(currTick % 10 == 0) {
@@ -315,8 +298,8 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
         int diffX = end.getX() - start.getX();
         int diffZ = end.getZ() - start.getZ();
 
-        for (int x = 0; x < diffX; x++) {
-            for (int z = 0; z < diffZ; z++) {
+        for (int x = 0; x <= diffX; x++) {
+            for (int z = 0; z <= diffZ; z++) {
                 BlockPos pos = start.add(x, 0, z);
                 BlockState state = world.getBlockState(pos);
 
@@ -338,7 +321,7 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
                 }
 
                 if (!contains) {
-                    MessageManager.sendMsgF(Formatting.GREEN +  "Grown Wart found at %s", pos);
+                    MessageManager.debugMsgF(Formatting.GREEN +  "Grown Wart found at %s", pos);
                     MainMod.LOGGER.info("Grown Wart found at {}", pos);
                     toMine.add(pos);
                 }
@@ -367,11 +350,21 @@ public abstract class GeneralTimerMixin implements GeneralTimerAccess {
             return false;
         }
 
-        storageBlocks = StorageManager.getOuterBlocks(world, rect, Blocks.WHITE_SHULKER_BOX);
+        List<BlockPos> storageBlocks = StorageManager.getOuterBlocks(world, rect, Blocks.WHITE_SHULKER_BOX);
         foodShulkers = StorageManager.getOuterBlocks(world, rect, Blocks.LIGHT_GRAY_SHULKER_BOX);
         List<BlockPos> beds = StorageManager.getOuterBlocks(world, rect, Blocks.WHITE_BED);
         if(beds.size() == 0) {
             MessageManager.sendMsg(Formatting.RED + "Could not find white bed.");
+            return false;
+        }
+
+        if(foodShulkers.size() == 0){
+            MessageManager.sendMsgF(Formatting.RED + "Could not find food shulker (light gray shulker box)");
+            return false;
+        }
+
+        if(storageBlocks.size() == 0){
+            MessageManager.sendMsgF(Formatting.RED + "Could not find storage shulker (white shulker box)");
             return false;
         }
 

@@ -36,6 +36,12 @@ public class ClientMainMod implements ClientModInitializer {
                                     .literal("shulker")
                                     .executes(this::checkShulkerBoxes)
                     );
+            dispatcher
+                    .register(
+                            ClientCommandManager
+                                    .literal("debug")
+                                    .executes(this::toggleDebug)
+                    );
         });
     }
 
@@ -55,6 +61,11 @@ public class ClientMainMod implements ClientModInitializer {
 
     public int checkShulkerBoxes(CommandContext<FabricClientCommandSource> context) {
         ((GeneralTimerAccess)MinecraftClient.getInstance().gameRenderer).test();
+        return 0;
+    }
+
+    public int toggleDebug(CommandContext<FabricClientCommandSource> context) {
+        MessageManager.toggleDebug();
         return 0;
     }
 }

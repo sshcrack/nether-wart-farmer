@@ -178,7 +178,7 @@ public class StorageManager extends GeneralHandler {
             }
 
             state = State.WALKING;
-            MessageManager.sendMsgF(Formatting.YELLOW + "Walking towards shulker at %s...", allShulkers.get(currShulker).getPos());
+            MessageManager.debugMsgF(Formatting.YELLOW + "Walking towards shulker at %s...", allShulkers.get(currShulker).getPos());
 
             return false;
         }

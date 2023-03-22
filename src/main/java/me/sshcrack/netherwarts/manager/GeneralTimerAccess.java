@@ -4,7 +4,7 @@ public interface GeneralTimerAccess {
     boolean start();
     boolean stop();
 
-    void inner_tick();
+    void innerTick();
 
     void test();
 }

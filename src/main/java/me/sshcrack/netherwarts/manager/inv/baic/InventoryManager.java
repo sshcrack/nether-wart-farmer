@@ -93,7 +93,7 @@ public class InventoryManager extends GeneralHandler {
                 state = InvState.Wait;
                 currTick = 1;
 
-                MessageManager.sendMsg(Formatting.GREEN + "Closing inventory / waiting...");
+                MessageManager.debugMsg(Formatting.GREEN + "Closing inventory / waiting...");
             }
 
             return false;
@@ -102,7 +102,7 @@ public class InventoryManager extends GeneralHandler {
         if(state == InvState.Wait) {
             currTick++;
             if(currTick % 20 == 0) {
-                MessageManager.sendMsg(Formatting.GREEN + "Done. Continuing...");
+                MessageManager.debugMsg(Formatting.GREEN + "Done. Continuing...");
                 state = InvState.Opening;
                 return true;
             }
